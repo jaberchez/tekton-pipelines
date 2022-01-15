@@ -1,0 +1,72 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: golang-ci
+spec:
+  params:
+    - name: golangVersion
+      description: Golang image version
+      type: string
+      default: "1.17.5"
+
+    - name: nameFolderRepo
+      description: Repos's name folder
+      type: string
+
+  workspaces:
+    - name: source
+    
+  steps:
+    - name: golang-lint
+      image: golangci/golangci-lint
+      workingDir: $(workspaces.source.path)/$(params.nameFolderRepo)
+      script: |
+        #! /usr/bin/env bash
+
+        set -e
+        
+        golangci-lint run
+
+        if [[ $? -eq 0 ]]; then
+           echo "[OK] Code lint"
+           exit 0
+        else
+           echo "[ERROR] Code lint"
+           exit 1
+        fi
+
+    - name: golang-build
+      image: golang:$(params.golangVersion)
+      workingDir: $(workspaces.source.path)/$(params.nameFolderRepo)
+      script: |
+        #! /usr/bin/env bash
+
+        set -e
+        
+        CGO_ENABLED=0 GOOS=linux go build main.go
+
+        if [[ $? -eq 0 ]]; then
+           echo "[OK] Building application"
+           exit 0
+        else
+           echo "[ERROR] Building application"
+           exit 1
+        fi
+
+    - name: golang-unit-test
+      image: golang:$(params.golangVersion)
+      workingDir: $(workspaces.source.path)/$(params.nameFolderRepo)
+      script: |
+        #! /usr/bin/env bash
+
+        set -e
+        
+        CGO_ENABLED=0 GOOS=linux go test
+
+        if [[ $? -eq 0 ]]; then
+           echo "[OK] Running unit test"
+           exit 0
+        else
+           echo "[ERROR] Running unit test"
+           exit 1
+        fi

@@ -1,0 +1,79 @@
+# This task gets the repository and branch from Github payload
+# Note: Payloads are different depending on event
+
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: get-repo-and-branch
+spec:
+  params:
+    - name: event
+      description: Github event
+      type: string
+
+    - name: payloadBase64
+      description: Payload from Webhook encoded in base64
+      type: string
+
+  results:
+    - name: repo-url
+      description: URL of repository
+
+    - name: branch
+      description: Branch
+    
+  steps:
+    - name: get-repo-and-branch
+      image: quay.io/jberchez-redhat/custom-utils:v2.0
+      script: |
+        #! /usr/bin/env bash
+        
+        set -eo pipefail
+
+        branch=""
+
+        # Decode payload
+        payload=$(echo "$(params.payloadBase64)" | base64 -d)
+
+        # Get repo from payload
+        repoURL=$(echo "$payload" | jq -r '.repository.clone_url' 2>&1)
+
+        if [ "$repoURL" == "null" ]; then
+           echo "[ERROR] .repository.clone_url not found in payload"
+           exit 1
+        fi
+
+        # Get branch from payload
+        if [[ "$(params.event)" == "push" ]]; then
+           # Get ref and base_ref from payload to find the branch
+           ref=$(echo "$payload" | jq -r '.ref' 2>&1)
+           baseRef=$(echo "$payload" | jq -r '.base_ref' 2>&1)
+   
+           if [[ "$ref" == "null" && "$baseRef" == "null" ]]; then
+              echo "[ERROR] Problems getting branch from payload: not found .ref nor .base_ref"
+              exit 1
+           fi
+           
+           if echo "$ref" | grep -qw "heads"; then
+              branch=$(echo ${ref##*/})
+           else
+              # No heads in ref, probably tags. Try in base_ref
+              if echo "$baseRef" | grep -qw "heads"; then
+                 branch=$(echo ${baseRef##*/})
+              fi
+           fi
+        elif [[ "$(params.event)" == "pull_request" ]]; then
+           branch=$(echo "$payload" | jq -r '.pull_request.head.ref' 2>&1)
+        fi
+
+        if [ -z "$branch" ]; then
+           echo "[ERROR] Branch not found in payload"
+           exit 1
+        fi
+
+        # Note: Very important not add carriage return in result
+        echo -n "$repoURL" > /tekton/results/repo-url
+        echo -n "$branch" > /tekton/results/branch
+        
+        echo "[OK] Repo URL \"$repoURL\""
+        echo "[OK] Branch \"$branch\""

@@ -1,0 +1,47 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: deploy
+spec:
+  params:
+  
+    - name: repoURL
+      description: GitOps URL repository
+      type: string
+
+    - name: targetRevision
+      description: Commit, branch or tag
+      type: string
+      default: main
+
+    - name: nameFolderRepo
+      description: Folder name to clone
+      type: string
+      default: repo
+
+  workspaces:
+    - name: source
+
+  results:
+    - name: name-folder-repo
+      description: Repo's folder name
+    
+  steps:
+    - name: clone-repo
+      image: quay.io/jberchez-redhat/custom-utils:v3.1
+      workingDir: $(workspaces.source.path)
+      script: |
+        #! /usr/bin/env bash
+        
+        set -e
+
+        git clone "$(params.repoURL)" -b "$(params.targetRevision)" "$(params.nameFolderRepo)"
+
+        # Note: Very important not add carriage return in result
+        echo -n "$(params.nameFolderRepo)" > /tekton/results/name-folder-repo
+        
+        echo "[OK] Repo \"$(params.repoURL)\" cloned succesfully in folder \"$(params.nameFolderRepo)\" from revision \"$(params.targetRevision)\""
+
+      env:
+        - name: GIT_SSL_NO_VERIFY
+          value: "true"

@@ -1,0 +1,56 @@
+# Note: Important the event because the payload is different
+
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: get-commit-id
+spec:
+  params:
+    - name: event
+      description: Github event
+      type: string
+
+    - name: payloadBase64
+      description: Payload from Webhook encoded in base64
+      type: string
+
+  results:
+    - name: commit-id
+      description: Commit 
+      
+    - name: short-commit-id
+      description: Short commit id
+
+  steps:
+    - name: get-commit-id
+      image: quay.io/jberchez-redhat/custom-utils:v2.0
+      script: |
+        #! /usr/bin/env bash
+        
+        set -e
+        
+        # Decode payload
+        payload="$(echo "$(params.payloadBase64)" | base64 -d)"
+
+        # Get commit id from payload
+        case "$(params.event)" in
+           push)
+              commitId=$(echo "$payload" | jq -r '.head_commit.id' 2>&1)
+              ;;
+          pull_request)
+              commitId=$(echo "$payload" | jq -r '.pull_request.head.sha' 2>&1)
+              ;;
+        esac
+
+        if [ "$commitId" == "null" ]; then
+           echo "[ERROR] Commit id not found in payload. Event: $(params.event)"
+           exit 1
+        fi
+
+        shortCommitId=$(echo "$commitId" | cut -c1-7)
+
+        echo -n "$commitId" > /tekton/results/commit-id
+        echo -n "$shortCommitId" > /tekton/results/short-commit-id
+
+        echo "[OK] Got commit id \"$commitId\" succesfully from payload"
+        echo "[OK] Got short commit id \"$shortCommitId\" succesfully from payload"

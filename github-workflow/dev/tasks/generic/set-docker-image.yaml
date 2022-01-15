@@ -1,0 +1,38 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: set-docker-image
+spec:
+  params:
+    - name: org
+      description: Docker image organization
+      type: string
+
+    - name: registry
+      type: string
+      default: "quay.io"
+
+    - name: msName
+      description: Image name
+      type: string
+
+    - name: shortCommitId
+      description: Short commit id
+      type: string
+
+  results:
+    - name: docker-image
+      description: Docker image
+    
+  steps:
+    - name: set-docker-image
+      image: quay.io/jberchez-redhat/custom-utils:v2.0
+      script: |
+        #! /usr/bin/env bash
+        
+        set -e
+
+        dockerImage="$(params.registry)/$(params.org)/$(params.msName):$(params.shortCommitId)"
+
+        echo -n "$dockerImage" > /tekton/results/docker-image
+        echo "[OK] Docker image \"$dockerImage\""

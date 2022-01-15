@@ -1,0 +1,62 @@
+# oc adm policy add-scc-to-user privileged -z pipelinerun-sa -n tekton-pipelines
+# oc create secret docker-registry registry-creds \
+#   --docker-server=<your-registry-server> \
+#   --docker-username=<your-name> \
+#   --docker-password=<your-pword> \
+#   --docker-email=<your-email> -n tekton-pipelines
+
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: build-and-push
+spec:
+  params:
+    - name: dockerImage
+      description: Docker image
+      type: string
+
+    - name: nameFolderRepo
+      description: Repos's name folder
+      type: string
+
+    - name: dockerfile
+      type: string
+      default: "./Dockerfile"
+
+    - name: commitId
+      type: string
+
+    - name: shortCommitId
+      type: string
+
+  workspaces:
+    - name: source
+    
+  steps:
+    - name: build-and-push
+      workingDir: $(workspaces.source.path)/$(params.nameFolderRepo)
+      image: gcr.io/kaniko-project/executor:latest
+      args:
+        - --dockerfile=$(params.dockerfile)
+        - --build-arg=COMMIT_ID=$(params.commitId)
+        - --build-arg=SHORT_COMMIT_ID=$(params.shortCommitId)
+        - --context=$(workspaces.source.path)/$(params.nameFolderRepo) 
+        - --destination=$(params.dockerImage)
+        - --skip-tls-verify
+        - --log-format=text
+      securityContext:
+        privileged: true
+      volumeMounts:
+        - name: registry-creds
+          mountPath: /kaniko/.docker
+
+  volumes:
+    - name: registry-creds
+      secret:
+        secretName: registry-creds
+        items:
+          - key: .dockerconfigjson
+            path: config.json
+    #- name: registry-creds
+    #  configMap:
+    #    name: registry-creds

@@ -1,0 +1,107 @@
+# Note: Important when clause because this task uses the github payload
+#       and the payload is diferent depending on the event
+
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+
+metadata:
+  name: microservice-ci
+  namespace: tekton-pipelines
+
+spec:
+  workspaces:
+    - name: source
+
+  params:
+    # Params provided for custom-tekton-listener
+    - name: payloadBase64
+      type: string
+
+    - name: event
+      type: string
+
+    - name: org
+      type: string
+
+    - name: msName
+      type: string
+
+    - name: registry
+      type: string
+
+    - name: type
+      type: string
+
+  tasks:
+    - name: get-commit-id
+      taskRef:
+        name: get-commit-id
+      params:
+        - name: event
+          value: "$(params.event)"
+
+        - name: payloadBase64
+          value: "$(params.payloadBase64)"
+
+    - name: set-docker-image
+      taskRef:
+        name: set-docker-image
+      params:
+        - name: shortCommitId
+          value: "$(tasks.get-commit-id.results.short-commit-id)"
+        - name: org
+          value: "$(params.org)"
+        - name: msName
+          value: "$(params.msName)"
+      runAfter:
+        - get-commit-id
+
+    - name: clone-repo
+      taskRef:
+        name: clone-repo
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: event
+          value: "$(params.event)"
+
+        - name: payloadBase64
+          value: "$(params.payloadBase64)"
+          
+    - name: golang-ci
+      taskRef:
+        name: golang-ci
+      params:
+        - name: nameFolderRepo
+          value: "$(tasks.clone-repo.results.name-folder-repo)"
+      workspaces:
+        - name: source
+          workspace: source
+      when:
+        - input: "$(params.type)"
+          operator: in
+          values: ["golang", "go"]
+      runAfter:
+        - clone-repo
+
+    - name: build-and-push
+      taskRef:
+        name: build-and-push
+      runAfter:
+        - get-commit-id
+        - set-docker-image
+        - clone-repo
+        - golang-ci
+      workspaces:
+        - name: source
+          workspace: source
+      params:
+        - name: nameFolderRepo
+          value: "$(tasks.clone-repo.results.name-folder-repo)"
+        - name: dockerImage
+          value: "$(tasks.set-docker-image.results.docker-image)"
+        - name: commitId
+          value: "$(tasks.get-commit-id.results.commit-id)"
+        - name: shortCommitId
+          value: "$(tasks.get-commit-id.results.short-commit-id)"
