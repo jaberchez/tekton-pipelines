@@ -4,5 +4,12 @@ kind: Kustomization
 resources:
   - microservice-ci-golang.yaml
   - microservice-cd.yaml
+  - https://github.com/jaberchez/kustomize-bases/service-account?ref=main
 
 namespace: tekton-pipelines-dev
+
+patches:
+  - target:
+      kind: ServiceAccount
+      name: base-name
+    path: patch-service-account.json
